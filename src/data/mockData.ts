@@ -20,43 +20,103 @@ export interface Train {
   direction: string;
   departureIn: number; // minutes
   coaches: string[];
+  type: "Fast" | "Slow";
+  originId: string;
+  destinationId: string;
+  stops: string[]; // station ids, in route order
 }
 
+const LINE = "Central Line";
+
+/** Full Central Line list, in geographic order (CSMT → Kalyan). */
 export const STATIONS: Station[] = [
-  { id: "DDR", name: "Dadar", line: "Western Line" },
-  { id: "BA", name: "Bandra", line: "Western Line" },
-  { id: "ADH", name: "Andheri", line: "Western Line" },
-  { id: "BO", name: "Borivali", line: "Western Line" },
-  { id: "CSMT", name: "CSMT", line: "Central Line" },
-  { id: "TNA", name: "Thane", line: "Central Line" },
+  { id: "CSMT", name: "CSMT", line: LINE },
+  { id: "BY", name: "Byculla", line: LINE },
+  { id: "DR", name: "Dadar", line: LINE },
+  { id: "CLA", name: "Kurla", line: LINE },
+  { id: "VVH", name: "Vidyavihar", line: LINE },
+  { id: "GC", name: "Ghatkopar", line: LINE },
+  { id: "VK", name: "Vikhroli", line: LINE },
+  { id: "BND", name: "Bhandup", line: LINE },
+  { id: "MLND", name: "Mulund", line: LINE },
+  { id: "TNA", name: "Thane", line: LINE },
+  { id: "DI", name: "Dombivli", line: LINE },
+  { id: "KYN", name: "Kalyan", line: LINE },
 ];
+
+/** Stations a Fast train actually halts at. */
+export const FAST_STOP_IDS = [
+  "CSMT",
+  "BY",
+  "DR",
+  "CLA",
+  "GC",
+  "TNA",
+  "DI",
+  "KYN",
+];
+
+/** Slow trains halt everywhere. */
+export const SLOW_STOP_IDS = STATIONS.map((s) => s.id);
+
+export function stationName(id: string): string {
+  return STATIONS.find((s) => s.id === id)?.name ?? id;
+}
+
+export function stationIndex(id: string): number {
+  return STATIONS.findIndex((s) => s.id === id);
+}
+
+/** Stops for a train type, trimmed to the origin → destination segment. */
+function routeStops(
+  type: "Fast" | "Slow",
+  originId: string,
+  destinationId: string,
+): string[] {
+  const base = type === "Fast" ? FAST_STOP_IDS : SLOW_STOP_IDS;
+  const from = base.indexOf(originId);
+  const to = base.indexOf(destinationId);
+  return from <= to ? base.slice(from, to + 1) : base.slice(to, from + 1).reverse();
+}
 
 export const COACHES = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"];
 
 export const TRAINS: Train[] = [
   {
     id: "90512",
-    name: "Churchgate — Borivali Slow",
-    line: "Western Line",
+    name: "CSMT — Thane Fast",
+    line: LINE,
     direction: "Northbound",
     departureIn: 2,
     coaches: COACHES,
+    type: "Fast",
+    originId: "CSMT",
+    destinationId: "TNA",
+    stops: routeStops("Fast", "CSMT", "TNA"),
   },
   {
     id: "90518",
-    name: "Churchgate — Virar Fast",
-    line: "Western Line",
+    name: "CSMT — Kalyan Slow",
+    line: LINE,
     direction: "Northbound",
     departureIn: 5,
     coaches: COACHES,
+    type: "Slow",
+    originId: "CSMT",
+    destinationId: "KYN",
+    stops: routeStops("Slow", "CSMT", "KYN"),
   },
   {
     id: "90524",
-    name: "Churchgate — Bhayandar Slow",
-    line: "Western Line",
+    name: "CSMT — Dombivli Fast",
+    line: LINE,
     direction: "Northbound",
     departureIn: 9,
     coaches: COACHES,
+    type: "Fast",
+    originId: "CSMT",
+    destinationId: "DI",
+    stops: routeStops("Fast", "CSMT", "DI"),
   },
 ];
 
@@ -82,13 +142,13 @@ export const UPCOMING_TRAINS: Record<string, UpcomingTrain[]> = {
   "90512": [
     {
       trainId: "90518",
-      name: "Churchgate — Virar Fast",
+      name: "CSMT — Kalyan Slow",
       etaMinutes: 5,
       predictedOccupancy: 0.52,
     },
     {
       trainId: "90524",
-      name: "Churchgate — Bhayandar Slow",
+      name: "CSMT — Dombivli Fast",
       etaMinutes: 9,
       predictedOccupancy: 0.41,
     },
@@ -96,7 +156,7 @@ export const UPCOMING_TRAINS: Record<string, UpcomingTrain[]> = {
   "90518": [
     {
       trainId: "90524",
-      name: "Churchgate — Bhayandar Slow",
+      name: "CSMT — Dombivli Fast",
       etaMinutes: 4,
       predictedOccupancy: 0.44,
     },
@@ -104,12 +164,13 @@ export const UPCOMING_TRAINS: Record<string, UpcomingTrain[]> = {
   "90524": [
     {
       trainId: "90512",
-      name: "Churchgate — Borivali Slow",
+      name: "CSMT — Thane Fast",
       etaMinutes: 6,
       predictedOccupancy: 0.6,
     },
   ],
 };
+
 
 let seedCounter = 0;
 function makeReport(

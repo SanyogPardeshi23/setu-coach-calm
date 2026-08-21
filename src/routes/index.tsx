@@ -186,8 +186,11 @@ function PassengerHome() {
       </div>
 
       <HonestyNote>
-        Updated {new Date(now).toLocaleTimeString()} · Prototype build with
-        simulated data. No live railway feed, no passenger counting, no ML.
+        <span suppressHydrationWarning>
+          Updated {new Date(now).toLocaleTimeString()}
+        </span>{" "}
+        · Prototype build with simulated data. No live railway feed, no
+        passenger counting, no ML.
       </HonestyNote>
     </div>
   );

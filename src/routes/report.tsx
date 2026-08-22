@@ -7,6 +7,7 @@ import {
   CROWD_LEVEL_LABELS,
   CrowdLevel,
   locationWeight,
+  scoreToLevel,
 } from "@/engine/decayWeightedEngine";
 import { crowdColorVar } from "@/lib/crowdUi";
 import {
@@ -25,6 +26,7 @@ import {
   formatDistance,
 } from "@/utils/geofence";
 import { enqueueReport, isOnline } from "@/utils/offlineQueue";
+import { CameraSeatScanner, type SeatScanResult } from "@/components/CameraSeatScanner";
 
 export const Route = createFileRoute("/report")({
   head: () => ({
@@ -33,7 +35,7 @@ export const Route = createFileRoute("/report")({
       {
         name: "description",
         content:
-          "Report how crowded your coach is in two taps. Your report is weighted by recency, your trust score, and how close you are to the station.",
+          "Report how crowded your coach is — by tapping a level, entering seat counts, or scanning with your camera.",
       },
       { property: "og:title", content: "Report crowd | SETU" },
       {
@@ -58,9 +60,38 @@ function ReportCrowd() {
   const navigate = useNavigate();
   const [level, setLevel] = useState<CrowdLevel | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [totalSeats, setTotalSeats] = useState<string>("");
+  const [emptySeats, setEmptySeats] = useState<string>("");
 
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
+
+  function applySeatCount(total: number, empty: number) {
+    if (!total || total <= 0 || empty < 0 || empty > total) {
+      toast.error("Enter a valid seat count (empty seats can't exceed total).");
+      return;
+    }
+    const occupiedRatio = (total - empty) / total;
+    const derivedLevel = scoreToLevel(occupiedRatio);
+    setLevel(derivedLevel);
+    toast(`Level set to ${CROWD_LEVEL_LABELS[derivedLevel]}`, {
+      description: `${empty}/${total} seats empty`,
+    });
+  }
+
+  function handleManualApply() {
+    applySeatCount(Number(totalSeats), Number(emptySeats));
+  }
+
+  function handleCameraScan(result: SeatScanResult) {
+    if (result.totalSeats === 0) {
+      toast.error("No chairs detected in frame — try repositioning the camera.");
+      return;
+    }
+    setTotalSeats(String(result.totalSeats));
+    setEmptySeats(String(result.emptySeats));
+    applySeatCount(result.totalSeats, result.emptySeats);
+  }
 
   function finalize(locationVerified: boolean, distanceMeters: number | null) {
     if (level === null) return;
@@ -104,6 +135,8 @@ function ReportCrowd() {
     }
 
     setLevel(null);
+    setTotalSeats("");
+    setEmptySeats("");
     navigate({ to: "/train" });
   }
 
@@ -236,6 +269,46 @@ function ReportCrowd() {
         </div>
       </section>
 
+      <section className="card-surface p-4 space-y-3">
+        <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Or enter seat count
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground">Total seats</label>
+            <input
+              type="number"
+              min={1}
+              value={totalSeats}
+              onChange={(e) => setTotalSeats(e.target.value)}
+              placeholder="e.g. 50"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Empty seats</label>
+            <input
+              type="number"
+              min={0}
+              value={emptySeats}
+              onChange={(e) => setEmptySeats(e.target.value)}
+              placeholder="e.g. 12"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <button
+          onClick={handleManualApply}
+          className="w-full rounded-xl border border-primary px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5"
+        >
+          Apply seat count
+        </button>
+
+        <div className="pt-2">
+          <CameraSeatScanner onScan={handleCameraScan} />
+        </div>
+      </section>
+
       <section className="card-surface flex items-center justify-between p-4 text-sm">
         <span className="text-muted-foreground">
           Your trust score (simulated)
@@ -265,8 +338,10 @@ function ReportCrowd() {
       <HonestyNote>
         Reports are stored in this prototype's memory only. Trust scores come
         from simulated verification, not live staff checkpoints. Reports
-        farther from a station carry proportionally less weight — this is a
-        demo model, not a production anti-spoofing system.
+        farther from a station carry proportionally less weight. The camera
+        scanner uses a general-purpose object-detection model, not a
+        train-specific one — this is a proof-of-concept, not production
+        computer vision.
         {" "}{COACH_CLASS_DISCLAIMER}
       </HonestyNote>
     </div>

@@ -124,7 +124,6 @@ function ReportCrowd() {
         distanceMeters = d;
         locationVerified = d <= GEOFENCE_RADIUS_METERS;
       } catch {
-        // Permission denied / unavailable / timed out — soft-fail, no distance data.
         locationVerified = false;
         distanceMeters = null;
       }
@@ -212,4 +211,64 @@ function ReportCrowd() {
                 style={{
                   borderColor: active ? color : "var(--color-border)",
                   backgroundColor: active
-                    ?
+                    ? `color-mix(in oklch, ${color} 12%, transparent)`
+                    : "transparent",
+                }}
+              >
+                <span
+                  className="size-3.5 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                <span>
+                  <span className="block text-sm font-bold">
+                    {CROWD_LEVEL_LABELS[l]}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {CROWD_LEVEL_DESCRIPTIONS[l]} · level {l}
+                  </span>
+                </span>
+                {active && (
+                  <Check className="ml-auto size-5" style={{ color }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card-surface flex items-center justify-between p-4 text-sm">
+        <span className="text-muted-foreground">
+          Your trust score (simulated)
+        </span>
+        <span className="font-bold tabular-nums">
+          ×{trust.toFixed(2)}{" "}
+          <span className="text-xs font-medium text-muted-foreground">
+            {trustTier(trust)}
+          </span>
+        </span>
+      </section>
+
+      <button
+        onClick={submit}
+        disabled={level === null || submitting}
+        className="w-full rounded-xl bg-primary px-5 py-4 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+      >
+        {submitting ? (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Loader2 className="size-4 animate-spin" /> Checking location…
+          </span>
+        ) : (
+          `Submit report (+${POINTS_PER_REPORT} SETU Points)`
+        )}
+      </button>
+
+      <HonestyNote>
+        Reports are stored in this prototype's memory only. Trust scores come
+        from simulated verification, not live staff checkpoints. Reports
+        farther from a station carry proportionally less weight — this is a
+        demo model, not a production anti-spoofing system.
+        {" "}{COACH_CLASS_DISCLAIMER}
+      </HonestyNote>
+    </div>
+  );
+}

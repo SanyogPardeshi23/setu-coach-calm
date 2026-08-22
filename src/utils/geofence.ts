@@ -5,7 +5,7 @@
  * faked trivially. It exists to demonstrate the product flow only.
  */
 
-export const GEOFENCE_RADIUS_METERS = 300;
+export const GEOFENCE_RADIUS_METERS = 25;
 
 export interface LatLng {
   lat: number;

@@ -6,6 +6,7 @@
 
 import { CrowdLevel, type CrowdReport } from "@/engine/decayWeightedEngine";
 import type { UpcomingTrain } from "@/engine/recommendationEngine";
+import { haversineDistanceMeters } from "@/utils/geofence";
 
 export interface Station {
   id: string;
@@ -233,6 +234,19 @@ export const MOCK_USERS: MockUser[] = [
   { id: "u-4590", name: "Commuter 4590", trustScore: 0.93 },
   { id: "u-5123", name: "Commuter 5123", trustScore: 1.34 },
 ];
+
+export function nearestStation(lat: number, lng: number): { station: Station; distanceMeters: number } {
+  let best: Station = STATIONS[0]!;
+  let bestDist = Infinity;
+  for (const s of STATIONS) {
+    const d = haversineDistanceMeters({ lat, lng }, { lat: s.lat, lng: s.lng });
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  return { station: best, distanceMeters: bestDist };
+}
 
 /** Upcoming trains with mock predicted occupancy (NOT an ML prediction). */
 export const UPCOMING_TRAINS: Record<string, UpcomingTrain[]> = {

@@ -93,6 +93,7 @@ export const setuActions = {
     level: CrowdLevel;
     userId?: string;
     locationVerified?: boolean;
+    distanceMeters?: number | null;
     queued?: boolean;
   }) {
     const userId = input.userId ?? CURRENT_USER_ID;
@@ -105,6 +106,7 @@ export const setuActions = {
       userId,
       userTrustScore: state.trustScores[userId] ?? DEFAULT_TRUST_SCORE,
       locationVerified: input.locationVerified ?? true,
+      distanceMeters: input.distanceMeters ?? null,
       queued: input.queued ?? false,
     };
     setState({
@@ -119,8 +121,9 @@ export const setuActions = {
 
   /**
    * Commits a report that was previously queued offline. Uses its ORIGINAL
-   * id/timestamp from offlineQueue.ts — never regenerates them — so a
-   * report filed 10 minutes ago still decays correctly once synced.
+   * id/timestamp/distanceMeters from offlineQueue.ts — never regenerates
+   * them — so a report filed 10 minutes ago still decays correctly, and
+   * its original location-confidence weight is preserved, once synced.
    */
   ingestQueuedReport(report: CrowdReport) {
     setState({
@@ -137,27 +140,4 @@ export const setuActions = {
     const event = applyVerification(current, userId, reported, actual);
     setState({
       trustScores: { ...state.trustScores, [userId]: event.newScore },
-      verifications: [event, ...state.verifications].slice(0, 40),
-    });
-    return event;
-  },
-
-  setSimulationRunning(running: boolean) {
-    setState({ simulationRunning: running });
-  },
-
-  bumpTick() {
-    setState({ tick: state.tick + 1 });
-  },
-
-  resetDemo() {
-    setState({
-      reports: seedReports(Date.now()),
-      trustScores: { ...initialTrust },
-      verifications: [],
-      points: 0,
-      simulationRunning: false,
-      tick: state.tick + 1,
-    });
-  },
-};
+      verifications: [event, ...state.verifications].slice(0,

@@ -26,7 +26,6 @@ import {
   formatDistance,
 } from "@/utils/geofence";
 import { enqueueReport, isOnline } from "@/utils/offlineQueue";
-import { CameraSeatScanner, type SeatScanResult } from "@/components/CameraSeatScanner";
 
 export const Route = createFileRoute("/report")({
   head: () => ({
@@ -35,7 +34,7 @@ export const Route = createFileRoute("/report")({
       {
         name: "description",
         content:
-          "Report how crowded your coach is — by tapping a level, entering seat counts, or scanning with your camera.",
+          "Report how crowded your coach is — by tapping a level or entering seat counts.",
       },
       { property: "og:title", content: "Report crowd | SETU" },
       {
@@ -81,16 +80,6 @@ function ReportCrowd() {
 
   function handleManualApply() {
     applySeatCount(Number(totalSeats), Number(emptySeats));
-  }
-
-  function handleCameraScan(result: SeatScanResult) {
-    if (result.totalSeats === 0) {
-      toast.error("No chairs detected in frame — try repositioning the camera.");
-      return;
-    }
-    setTotalSeats(String(result.totalSeats));
-    setEmptySeats(String(result.emptySeats));
-    applySeatCount(result.totalSeats, result.emptySeats);
   }
 
   function finalize(locationVerified: boolean, distanceMeters: number | null) {
@@ -303,10 +292,6 @@ function ReportCrowd() {
         >
           Apply seat count
         </button>
-
-        <div className="pt-2">
-          <CameraSeatScanner onScan={handleCameraScan} />
-        </div>
       </section>
 
       <section className="card-surface flex items-center justify-between p-4 text-sm">
@@ -338,10 +323,8 @@ function ReportCrowd() {
       <HonestyNote>
         Reports are stored in this prototype's memory only. Trust scores come
         from simulated verification, not live staff checkpoints. Reports
-        farther from a station carry proportionally less weight. The camera
-        scanner uses a general-purpose object-detection model, not a
-        train-specific one — this is a proof-of-concept, not production
-        computer vision.
+        farther from a station carry proportionally less weight — this is a
+        demo model, not a production anti-spoofing system.
         {" "}{COACH_CLASS_DISCLAIMER}
       </HonestyNote>
     </div>

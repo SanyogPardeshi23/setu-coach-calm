@@ -85,12 +85,21 @@ export function recommend(
   const scored = aggregates.filter(
     (a) => a.status === "SCORED" && a.occupancyScore !== null,
   );
-  const bestCoach = [...scored].sort(
-    (a, b) => (a.occupancyScore as number) - (b.occupancyScore as number),
-  )[0];
   const current = selectedCoachId
     ? scored.find((a) => a.coachId === selectedCoachId)
     : undefined;
+
+  // Only ever suggest a coach of the same class (1st class stays 1st class).
+  const currentClass =
+    classOf && selectedCoachId ? classOf(selectedCoachId) : undefined;
+  const candidates =
+    currentClass && classOf
+      ? scored.filter((a) => classOf(a.coachId) === currentClass)
+      : scored;
+
+  const bestCoach = [...candidates].sort(
+    (a, b) => (a.occupancyScore as number) - (b.occupancyScore as number),
+  )[0];
 
   if (
     bestCoach &&
@@ -104,10 +113,13 @@ export function recommend(
     return {
       action: "MOVE_COACH",
       headline: `Move to Coach ${bestCoach.coachId} — more space`,
-      reasoning: `Move to Coach ${bestCoach.coachId} — more space (${bestLabel} vs ${currentLabel} in your coach)`,
-      details: { avgOccupancy, bestCoach, current },
+      reasoning: `Move to Coach ${bestCoach.coachId} — more space (${bestLabel} vs ${currentLabel} in your coach)${
+        currentClass ? `, same class as your coach` : ""
+      }`,
+      details: { avgOccupancy, bestCoach, current, coachClass: currentClass },
     };
   }
+
 
   // Step 3 — BOARD_NOW
   return {

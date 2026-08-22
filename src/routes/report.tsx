@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   CROWD_LEVEL_DESCRIPTIONS,
@@ -8,10 +8,12 @@ import {
   CrowdLevel,
 } from "@/engine/decayWeightedEngine";
 import { crowdColorVar } from "@/lib/crowdUi";
-import { TRAINS, CURRENT_USER_ID } from "@/data/mockData";
+import { TRAINS, CURRENT_USER_ID, coachClassOf, stationById } from "@/data/mockData";
 import { setuActions, useSetuStore, POINTS_PER_REPORT } from "@/store/setuStore";
 import { HonestyNote } from "@/components/HonestyNote";
 import { trustTier } from "@/engine/trustEngine";
+import { checkStationProximity } from "@/utils/geofence";
+import { enqueueReport, isOnline } from "@/utils/offlineQueue";
 
 export const Route = createFileRoute("/report")({
   head: () => ({
@@ -41,25 +43,81 @@ const LEVELS = [
 ];
 
 function ReportCrowd() {
-  const { selectedTrainId, selectedCoachId, trustScores } = useSetuStore();
+  const { selectedTrainId, selectedCoachId, selectedStationId, trustScores } =
+    useSetuStore();
   const navigate = useNavigate();
   const [level, setLevel] = useState<CrowdLevel | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [geoWarning, setGeoWarning] = useState<string | null>(null);
 
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
+  const station = stationById(selectedStationId);
 
-  function submit() {
+  function finalize(locationVerified: boolean) {
     if (level === null) return;
-    setuActions.submitReport({
-      trainId: train.id,
-      coachId: selectedCoachId,
-      level,
-    });
-    toast.success(`Report submitted · +${POINTS_PER_REPORT} SETU Points`, {
-      description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]} · weight ×${trust.toFixed(2)} trust`,
-    });
+
+    if (!isOnline()) {
+      enqueueReport({
+        id: `rep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        trainId: train.id,
+        coachId: selectedCoachId,
+        level,
+        timestamp: Date.now(),
+        userId: CURRENT_USER_ID,
+        userTrustScore: trust,
+        locationVerified,
+        queued: true,
+      });
+      toast("Queued — will send when back online", {
+        description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]}`,
+      });
+    } else {
+      setuActions.submitReport({
+        trainId: train.id,
+        coachId: selectedCoachId,
+        level,
+        locationVerified,
+      });
+      toast.success(`Report submitted · +${POINTS_PER_REPORT} SETU Points`, {
+        description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]} · weight ×${trust.toFixed(2)} trust`,
+      });
+    }
+
     setLevel(null);
+    setGeoWarning(null);
+    setSubmitting(false);
     navigate({ to: "/train" });
+  }
+
+  async function submit(forceOverride = false) {
+    if (level === null) return;
+    setSubmitting(true);
+
+    if (forceOverride || !station) {
+      finalize(false);
+      return;
+    }
+
+    const result = await checkStationProximity({
+      lat: station.lat,
+      lng: station.lng,
+    });
+
+    if (result.locationVerified) {
+      finalize(true);
+      return;
+    }
+
+    if (result.status === "OUTSIDE") {
+      // Genuine mismatch — pause for an explicit override, don't hard-block.
+      setSubmitting(false);
+      setGeoWarning(result.message);
+      return;
+    }
+
+    // PERMISSION_DENIED / UNAVAILABLE / UNSUPPORTED — soft-fail straight through.
+    finalize(false);
   }
 
   return (
@@ -96,19 +154,30 @@ function ReportCrowd() {
           Coach
         </label>
         <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-8">
-          {train.coaches.map((c) => (
-            <button
-              key={c}
-              onClick={() => setuActions.selectCoach(c)}
-              className={`rounded-xl border py-3 text-sm font-semibold transition-colors ${
-                c === selectedCoachId
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border hover:bg-secondary"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
+          {train.coaches.map((c) => {
+            const isFirst = coachClassOf(c) === "FIRST";
+            const active = c === selectedCoachId;
+            return (
+              <button
+                key={c}
+                onClick={() => setuActions.selectCoach(c)}
+                className={`relative rounded-xl border py-3 text-sm font-semibold transition-colors ${
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : isFirst
+                      ? "border-amber-400/60 bg-amber-400/10 hover:bg-amber-400/20"
+                      : "border-border hover:bg-secondary"
+                }`}
+              >
+                {c}
+                {isFirst && (
+                  <span className="absolute -top-1.5 -right-1.5 rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+                    1st
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -165,17 +234,44 @@ function ReportCrowd() {
         </span>
       </section>
 
+      {geoWarning && (
+        <div className="card-surface border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <p className="font-medium text-foreground">{geoWarning}</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => submit(true)}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-secondary"
+            >
+              Report anyway
+            </button>
+            <button
+              onClick={() => setGeoWarning(null)}
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
-        onClick={submit}
-        disabled={level === null}
+        onClick={() => submit(false)}
+        disabled={level === null || submitting}
         className="w-full rounded-xl bg-primary px-5 py-4 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
       >
-        Submit report (+{POINTS_PER_REPORT} SETU Points)
+        {submitting ? (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Loader2 className="size-4 animate-spin" /> Checking location…
+          </span>
+        ) : (
+          `Submit report (+${POINTS_PER_REPORT} SETU Points)`
+        )}
       </button>
 
       <HonestyNote>
         Reports are stored in this prototype's memory only. Trust scores come
-        from simulated verification, not live staff checkpoints.
+        from simulated verification, not live staff checkpoints. Location
+        proximity is a demo check — not a production anti-spoofing system.
       </HonestyNote>
     </div>
   );

@@ -29,12 +29,10 @@ export const CROWD_LEVEL_DESCRIPTIONS: Record<CrowdLevel, string> = {
   [CrowdLevel.PACKED]: "Extremely crowded",
 };
 
-/** Normalize a discrete level to a 0..1 occupancy score. */
 export function levelScore(level: CrowdLevel): number {
   return level / MAX_LEVEL;
 }
 
-/** Map a 0..1 occupancy score back to the nearest discrete level. */
 export function scoreToLevel(score: number): CrowdLevel {
   return Math.round(Math.max(0, Math.min(1, score)) * MAX_LEVEL) as CrowdLevel;
 }
@@ -44,35 +42,174 @@ export interface CrowdReport {
   trainId: string;
   coachId: string;
   level: CrowdLevel;
-  /** unix ms */
   timestamp: number;
   userId: string;
   userTrustScore: number;
-  /** Demo proximity check result (see src/utils/geofence.ts). */
   locationVerified?: boolean;
-  /**
-   * Distance from the nearest station in meters, when a GPS fix was
-   * obtained. `null` = location check attempted but failed/denied.
-   * `undefined` = no location data at all (e.g. seeded demo reports) —
-   * these get full weight, not the "unknown" penalty, for backward
-   * compatibility with data that predates this feature.
-   */
   distanceMeters?: number | null;
-  /** True while the report is sitting in the offline queue. */
   queued?: boolean;
 }
 
-/** 180-second half-life: a report is worth half as much after 3 minutes. */
 export const HALF_LIFE_SECONDS = 180;
 export const DECAY_RATE = Math.LN2 / HALF_LIFE_SECONDS;
-/** Below this total weight every report has effectively decayed away. */
 export const MIN_TOTAL_WEIGHT = 0.05;
 
-/**
- * Location-confidence weighting. Mirrors the same exponential-decay
- * technique used for time above, applied to distance instead: a report
- * loses half its location-confidence weight every LOCATION_HALF_LIFE_METERS
- * beyond the verified geofence radius.
- */
 export const LOCATION_HALF_LIFE_METERS = 500;
-/**
+export const MIN_LOCATION_WEIGHT = 0.15;
+export const LOCATION_UNKNOWN_WEIGHT = 0.7;
+
+export function locationWeight(distanceMeters: number | null): number {
+  if (distanceMeters === null) return LOCATION_UNKNOWN_WEIGHT;
+  if (distanceMeters <= GEOFENCE_RADIUS_METERS) return 1.0;
+  const excess = distanceMeters - GEOFENCE_RADIUS_METERS;
+  const decayRate = Math.LN2 / LOCATION_HALF_LIFE_METERS;
+  const raw = Math.exp(-decayRate * excess);
+  return Math.max(MIN_LOCATION_WEIGHT, raw);
+}
+
+export type CoachStatus = "SCORED" | "NO_RECENT_DATA" | "NO_DATA";
+
+export interface CoachAggregate {
+  coachId: string;
+  status: CoachStatus;
+  occupancyScore: number | null;
+  level: CrowdLevel | null;
+  label: string | null;
+  totalWeight: number;
+  numReports: number;
+  confidence: number;
+  lowConfidence: boolean;
+  lastReportAt: number | null;
+}
+
+export function reportWeight(report: CrowdReport, now: number): number {
+  const secondsSince = Math.max(0, (now - report.timestamp) / 1000);
+  const timeFactor = Math.exp(-DECAY_RATE * secondsSince);
+  const locFactor =
+    report.distanceMeters === undefined
+      ? 1.0
+      : locationWeight(report.distanceMeters);
+  return timeFactor * report.userTrustScore * locFactor;
+}
+
+export const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
+export function aggregateCoach(
+  coachId: string,
+  reports: CrowdReport[],
+  now: number = Date.now(),
+): CoachAggregate {
+  if (reports.length === 0) {
+    return {
+      coachId,
+      status: "NO_DATA",
+      occupancyScore: null,
+      level: null,
+      label: null,
+      totalWeight: 0,
+      numReports: 0,
+      confidence: 0,
+      lowConfidence: true,
+      lastReportAt: null,
+    };
+  }
+
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let lastReportAt = 0;
+  let validCount = 0;
+
+  for (const report of reports) {
+    const w = reportWeight(report, now);
+    const lvl = levelScore(report.level);
+    if (
+      !Number.isFinite(w) ||
+      !Number.isFinite(lvl) ||
+      !Number.isFinite(report.timestamp)
+    ) {
+      continue;
+    }
+    validCount += 1;
+    totalWeight += w;
+    weightedSum += w * lvl;
+    lastReportAt = Math.max(lastReportAt, report.timestamp);
+  }
+
+  const confidence =
+    validCount === 0
+      ? 0
+      : Math.min(1, totalWeight / validCount) * Math.min(1, validCount / 3);
+
+  if (validCount === 0 || totalWeight < MIN_TOTAL_WEIGHT) {
+    return {
+      coachId,
+      status: "NO_RECENT_DATA",
+      occupancyScore: null,
+      level: null,
+      label: null,
+      totalWeight,
+      numReports: validCount,
+      confidence,
+      lowConfidence: true,
+      lastReportAt: lastReportAt || null,
+    };
+  }
+
+  const occupancyScore = weightedSum / totalWeight;
+  const level = scoreToLevel(occupancyScore);
+
+  return {
+    coachId,
+    status: "SCORED",
+    occupancyScore,
+    level,
+    label: CROWD_LEVEL_LABELS[level],
+    totalWeight,
+    numReports: validCount,
+    confidence,
+    lowConfidence: confidence < LOW_CONFIDENCE_THRESHOLD,
+    lastReportAt,
+  };
+}
+
+export function aggregateTrain(
+  coachIds: string[],
+  reports: CrowdReport[],
+  trainId: string,
+  now: number = Date.now(),
+): CoachAggregate[] {
+  return coachIds.map((coachId) =>
+    aggregateCoach(
+      coachId,
+      reports.filter((r) => r.trainId === trainId && r.coachId === coachId),
+      now,
+    ),
+  );
+}
+
+export function trainAverageOccupancy(
+  aggregates: CoachAggregate[],
+): number | null {
+  const scored = aggregates.filter(
+    (a) => a.status === "SCORED" && a.occupancyScore !== null,
+  );
+  if (scored.length === 0) return null;
+  return (
+    scored.reduce((sum, a) => sum + (a.occupancyScore as number), 0) /
+    scored.length
+  );
+}
+
+export function formatPercent(score: number): string {
+  return `${Math.round(score * 100)}%`;
+}
+
+export function relativeTime(timestamp: number, now: number = Date.now()): string {
+  const s = Math.max(0, Math.round((now - timestamp) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}

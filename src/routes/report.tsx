@@ -8,8 +8,7 @@ import {
   CrowdLevel,
 } from "@/engine/decayWeightedEngine";
 import { crowdColorVar } from "@/lib/crowdUi";
-import { TRAINS, CURRENT_USER_ID, coachClassOf, stationById } from "@/data/mockData";
-import { setuActions, useSetuStore, POINTS_PER_REPORT } from "@/store/setuStore";
+import { TRAINS, CURRENT_USER_ID, coachClassOf, stationById, COACH_CLASS_DISCLAIMER } from "@/data/mockData";import { setuActions, useSetuStore, POINTS_PER_REPORT } from "@/store/setuStore";
 import { HonestyNote } from "@/components/HonestyNote";
 import { trustTier } from "@/engine/trustEngine";
 import { checkStationProximity } from "@/utils/geofence";

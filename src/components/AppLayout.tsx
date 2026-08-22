@@ -22,16 +22,8 @@ const NAV = [
 export function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
   setQueueFlusher((reports) => {
-    reports.forEach((r) => {
-      setuActions.ingestQueuedReport({
-        trainId: r.trainId,
-        coachId: r.coachId,
-        level: r.level,
-        userId: r.userId,
-        locationVerified: r.locationVerified,
-      });
-    });
-  });
+  reports.forEach((r) => setuActions.ingestQueuedReport(r));
+});
 
   const cleanup = initOfflineSync((count) => {
     toast.success(`${count} report${count === 1 ? "" : "s"} synced`, {

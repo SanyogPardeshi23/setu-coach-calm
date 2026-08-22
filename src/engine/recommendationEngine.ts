@@ -36,6 +36,11 @@ export function recommend(
   aggregates: CoachAggregate[],
   upcomingTrains: UpcomingTrain[] = [],
   selectedCoachId?: string | null,
+  /**
+   * Optional coach-class lookup. When provided, MOVE_COACH only ever suggests
+   * a coach of the same class as the commuter's current coach.
+   */
+  classOf?: (coachId: string) => string,
 ): Recommendation {
   const avgOccupancy = trainAverageOccupancy(aggregates);
 

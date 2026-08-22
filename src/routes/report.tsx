@@ -287,3 +287,12 @@ function ReportCrowd() {
         proximity is a demo check — not a production anti-spoofing system.
         {" "}{COACH_CLASS_DISCLAIMER}
       </HonestyNote>
+              <HonestyNote>
+        Reports are stored in this prototype's memory only. Trust scores come
+        from simulated verification, not live staff checkpoints. Location
+        proximity is a demo check — not a production anti-spoofing system.
+        {" "}{COACH_CLASS_DISCLAIMER}
+      </HonestyNote>
+    </div>
+  );
+}

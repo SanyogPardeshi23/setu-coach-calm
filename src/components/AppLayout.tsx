@@ -6,7 +6,10 @@ import {
   MessageSquarePlus,
   TrainFront,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { toast } from "sonner";
+import { setuActions } from "@/store/setuStore";
+import { setQueueFlusher, initOfflineSync } from "@/utils/offlineQueue";
 
 const NAV = [
   { to: "/", label: "Home", icon: House },
@@ -17,6 +20,27 @@ const NAV = [
 ] as const;
 
 export function AppLayout({ children }: { children: ReactNode }) {
+  useEffect(() => {
+  setQueueFlusher((reports) => {
+    reports.forEach((r) => {
+      setuActions.ingestQueuedReport({
+        trainId: r.trainId,
+        coachId: r.coachId,
+        level: r.level,
+        userId: r.userId,
+        locationVerified: r.locationVerified,
+      });
+    });
+  });
+
+  const cleanup = initOfflineSync((count) => {
+    toast.success(`${count} report${count === 1 ? "" : "s"} synced`, {
+      description: "Your queued crowd reports are now live.",
+    });
+  });
+
+  return cleanup;
+}, []);
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">

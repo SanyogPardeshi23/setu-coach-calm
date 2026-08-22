@@ -51,7 +51,6 @@ function ReportCrowd() {
 
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
-  const station = stationById(selectedStationId);
 
   function finalize(locationVerified: boolean) {
     if (level === null) return;
@@ -98,10 +97,14 @@ function ReportCrowd() {
       return;
     }
 
-    const result = await checkStationProximity({
-      lat: station.lat,
-      lng: station.lng,
-    });
+    const pos = await getCurrentPosition();
+    const { station: nearest, distanceMeters } = nearestStation(
+    pos.coords.latitude,
+    pos.coords.longitude,
+    );
+    const result = await checkStationProximity(
+    { lat: nearest.lat, lng: nearest.lng },
+    );
 
     if (result.locationVerified) {
       finalize(true);

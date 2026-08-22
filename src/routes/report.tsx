@@ -34,7 +34,7 @@ export const Route = createFileRoute("/report")({
       {
         name: "description",
         content:
-          "Report how crowded your coach is — by tapping a level or entering seat counts.",
+          "Report how crowded your coach is — by tapping a level or entering an empty-seat count.",
       },
       { property: "og:title", content: "Report crowd | SETU" },
       {
@@ -54,32 +54,41 @@ const LEVELS = [
   CrowdLevel.PACKED,
 ];
 
+/**
+ * Fixed total-seat estimates per coach class, standard Mumbai suburban
+ * rake. Second Class: ~96-100 seats (3-per-bench, often 4 in rush hour).
+ * First Class: ~80-84 seats (fewer, more individual room). Midpoints used
+ * as a single fixed figure for this demo, not measured per-coach.
+ */
+const SEATS_PER_CLASS: Record<"FIRST" | "SECOND", number> = {
+  SECOND: 98,
+  FIRST: 82,
+};
+
 function ReportCrowd() {
   const { selectedTrainId, selectedCoachId, trustScores } = useSetuStore();
   const navigate = useNavigate();
   const [level, setLevel] = useState<CrowdLevel | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [totalSeats, setTotalSeats] = useState<string>("");
   const [emptySeats, setEmptySeats] = useState<string>("");
 
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
+  const selectedClass = coachClassOf(selectedCoachId);
+  const totalSeats = SEATS_PER_CLASS[selectedClass];
 
-  function applySeatCount(total: number, empty: number) {
-    if (!total || total <= 0 || empty < 0 || empty > total) {
-      toast.error("Enter a valid seat count (empty seats can't exceed total).");
+  function handleApplySeatCount() {
+    const empty = Number(emptySeats);
+    if (emptySeats === "" || empty < 0 || empty > totalSeats) {
+      toast.error(`Enter a number between 0 and ${totalSeats}.`);
       return;
     }
-    const occupiedRatio = (total - empty) / total;
+    const occupiedRatio = (totalSeats - empty) / totalSeats;
     const derivedLevel = scoreToLevel(occupiedRatio);
     setLevel(derivedLevel);
     toast(`Level set to ${CROWD_LEVEL_LABELS[derivedLevel]}`, {
-      description: `${empty}/${total} seats empty`,
+      description: `${empty}/${totalSeats} seats empty · ${selectedClass === "FIRST" ? "1st" : "2nd"} Class`,
     });
-  }
-
-  function handleManualApply() {
-    applySeatCount(Number(totalSeats), Number(emptySeats));
   }
 
   function finalize(locationVerified: boolean, distanceMeters: number | null) {
@@ -124,7 +133,6 @@ function ReportCrowd() {
     }
 
     setLevel(null);
-    setTotalSeats("");
     setEmptySeats("");
     navigate({ to: "/train" });
   }
@@ -260,34 +268,28 @@ function ReportCrowd() {
 
       <section className="card-surface p-4 space-y-3">
         <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Or enter seat count
+          Or enter empty seat count
         </label>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs text-muted-foreground">Total seats</label>
-            <input
-              type="number"
-              min={1}
-              value={totalSeats}
-              onChange={(e) => setTotalSeats(e.target.value)}
-              placeholder="e.g. 50"
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Empty seats</label>
-            <input
-              type="number"
-              min={0}
-              value={emptySeats}
-              onChange={(e) => setEmptySeats(e.target.value)}
-              placeholder="e.g. 12"
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            />
-          </div>
+        <p className="text-xs text-muted-foreground">
+          Coach {selectedCoachId} is {selectedClass === "FIRST" ? "1st" : "2nd"}{" "}
+          Class — assumed {totalSeats} total seats.
+        </p>
+        <div>
+          <label className="text-xs text-muted-foreground">
+            Empty seats (0–{totalSeats})
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={totalSeats}
+            value={emptySeats}
+            onChange={(e) => setEmptySeats(e.target.value)}
+            placeholder="e.g. 12"
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
         </div>
         <button
-          onClick={handleManualApply}
+          onClick={handleApplySeatCount}
           className="w-full rounded-xl border border-primary px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5"
         >
           Apply seat count
@@ -322,7 +324,8 @@ function ReportCrowd() {
 
       <HonestyNote>
         Reports are stored in this prototype's memory only. Trust scores come
-        from simulated verification, not live staff checkpoints. Reports
+        from simulated verification, not live staff checkpoints. Seat totals
+        are fixed per-class estimates, not measured per coach. Reports
         farther from a station carry proportionally less weight — this is a
         demo model, not a production anti-spoofing system.
         {" "}{COACH_CLASS_DISCLAIMER}

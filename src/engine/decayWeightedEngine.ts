@@ -60,7 +60,18 @@ export const MIN_TOTAL_WEIGHT = 0.05;
 
 export type CoachStatus = "SCORED" | "NO_RECENT_DATA" | "NO_DATA";
 
-
+export interface CoachAggregate {
+  coachId: string;
+  status: CoachStatus;
+  occupancyScore: number | null;
+  level: CrowdLevel | null;
+  label: string | null;
+  totalWeight: number;
+  numReports: number;
+  confidence: number;
+  lowConfidence: boolean;
+  lastReportAt: number | null;
+}
 
 export function reportWeight(report: CrowdReport, now: number): number {
   const secondsSince = Math.max(0, (now - report.timestamp) / 1000);
@@ -141,41 +152,6 @@ export function aggregateCoach(
     label: CROWD_LEVEL_LABELS[level],
     totalWeight,
     numReports: validCount,
-    confidence,
-    lowConfidence: confidence < LOW_CONFIDENCE_THRESHOLD,
-    lastReportAt,
-  };
-}
-
-  const confidence =
-    Math.min(1, totalWeight / numReports) * Math.min(1, numReports / 3);
-
-  if (totalWeight < MIN_TOTAL_WEIGHT) {
-    return {
-      coachId,
-      status: "NO_RECENT_DATA",
-      occupancyScore: null,
-      level: null,
-      label: null,
-      totalWeight,
-      numReports,
-      confidence,
-      lowConfidence: true,
-      lastReportAt,
-    };
-  }
-
-  const occupancyScore = weightedSum / totalWeight;
-  const level = scoreToLevel(occupancyScore);
-
-  return {
-    coachId,
-    status: "SCORED",
-    occupancyScore,
-    level,
-    label: CROWD_LEVEL_LABELS[level],
-    totalWeight,
-    numReports,
     confidence,
     lowConfidence: confidence < LOW_CONFIDENCE_THRESHOLD,
     lastReportAt,

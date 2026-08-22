@@ -6,6 +6,7 @@ import {
   CROWD_LEVEL_DESCRIPTIONS,
   CROWD_LEVEL_LABELS,
   CrowdLevel,
+  locationWeight,
 } from "@/engine/decayWeightedEngine";
 import { crowdColorVar } from "@/lib/crowdUi";
 import {
@@ -32,7 +33,7 @@ export const Route = createFileRoute("/report")({
       {
         name: "description",
         content:
-          "Report how crowded your coach is in two taps. Your report is weighted by recency and your trust score, and earns 10 SETU points.",
+          "Report how crowded your coach is in two taps. Your report is weighted by recency, your trust score, and how close you are to the station.",
       },
       { property: "og:title", content: "Report crowd | SETU" },
       {
@@ -57,77 +58,78 @@ function ReportCrowd() {
   const navigate = useNavigate();
   const [level, setLevel] = useState<CrowdLevel | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [geoWarning, setGeoWarning] = useState<string | null>(null);
 
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
 
-  function finalize(locationVerified: boolean) {
+  function finalize(locationVerified: boolean, distanceMeters: number | null) {
     if (level === null) return;
+
+    const reportPayload = {
+      trainId: train.id,
+      coachId: selectedCoachId,
+      level,
+      locationVerified,
+      distanceMeters,
+    };
 
     if (!isOnline()) {
       enqueueReport({
         id: `rep-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        trainId: train.id,
-        coachId: selectedCoachId,
-        level,
+        ...reportPayload,
         timestamp: Date.now(),
         userId: CURRENT_USER_ID,
         userTrustScore: trust,
-        locationVerified,
         queued: true,
       });
       toast("Queued — will send when back online", {
         description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]}`,
       });
     } else {
-      setuActions.submitReport({
-        trainId: train.id,
-        coachId: selectedCoachId,
-        level,
-        locationVerified,
-      });
-      toast.success(`Report submitted · +${POINTS_PER_REPORT} SETU Points`, {
-        description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]} · weight ×${trust.toFixed(2)} trust`,
-      });
+      setuActions.submitReport(reportPayload);
+
+      const isFarAway =
+        distanceMeters !== null && distanceMeters > GEOFENCE_RADIUS_METERS;
+
+      if (isFarAway) {
+        const pct = Math.round(locationWeight(distanceMeters) * 100);
+        toast.success(`Report submitted · ${pct}% location confidence`, {
+          description: `About ${formatDistance(distanceMeters!)} from the nearest station — reports farther away carry proportionally less weight.`,
+        });
+      } else {
+        toast.success(`Report submitted · +${POINTS_PER_REPORT} SETU Points`, {
+          description: `Coach ${selectedCoachId} · ${CROWD_LEVEL_LABELS[level]} · weight ×${trust.toFixed(2)} trust`,
+        });
+      }
     }
 
     setLevel(null);
-    setGeoWarning(null);
     navigate({ to: "/train" });
   }
 
-  async function submit(forceOverride = false) {
+  async function submit() {
     if (level === null) return;
     setSubmitting(true);
 
     try {
-      if (forceOverride) {
-        finalize(false);
-        return;
-      }
-
       let locationVerified = false;
+      let distanceMeters: number | null = null;
+
       try {
         const pos = await getCurrentPosition();
-        const { station: nearest, distanceMeters } = nearestStation(
+        const { distanceMeters: d } = nearestStation(
           pos.coords.latitude,
           pos.coords.longitude,
         );
-        locationVerified = distanceMeters <= GEOFENCE_RADIUS_METERS;
-
-        if (!locationVerified) {
-          setGeoWarning(
-            `You don't appear to be near a station (nearest is ${nearest.name}, about ${formatDistance(distanceMeters)} away) — report anyway?`,
-          );
-          return; // pause here — wait for the explicit override button
-        }
+        distanceMeters = d;
+        locationVerified = d <= GEOFENCE_RADIUS_METERS;
       } catch {
-        // Permission denied / unavailable / timed out — soft-fail straight through.
+        // Permission denied / unavailable / timed out — soft-fail, no distance data.
         locationVerified = false;
+        distanceMeters = null;
       }
 
-      finalize(locationVerified);
+      finalize(locationVerified, distanceMeters);
     } finally {
       setSubmitting(false);
     }
@@ -210,84 +212,4 @@ function ReportCrowd() {
                 style={{
                   borderColor: active ? color : "var(--color-border)",
                   backgroundColor: active
-                    ? `color-mix(in oklch, ${color} 12%, transparent)`
-                    : "transparent",
-                }}
-              >
-                <span
-                  className="size-3.5 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-                <span>
-                  <span className="block text-sm font-bold">
-                    {CROWD_LEVEL_LABELS[l]}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {CROWD_LEVEL_DESCRIPTIONS[l]} · level {l}
-                  </span>
-                </span>
-                {active && (
-                  <Check className="ml-auto size-5" style={{ color }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="card-surface flex items-center justify-between p-4 text-sm">
-        <span className="text-muted-foreground">
-          Your trust score (simulated)
-        </span>
-        <span className="font-bold tabular-nums">
-          ×{trust.toFixed(2)}{" "}
-          <span className="text-xs font-medium text-muted-foreground">
-            {trustTier(trust)}
-          </span>
-        </span>
-      </section>
-
-      {geoWarning && (
-        <div className="card-surface border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-          <p className="font-medium text-foreground">{geoWarning}</p>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => submit(true)}
-              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-secondary"
-            >
-              Report anyway
-            </button>
-            <button
-              onClick={() => setGeoWarning(null)}
-              className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <button
-        onClick={() => submit(false)}
-        disabled={level === null || submitting}
-        className="w-full rounded-xl bg-primary px-5 py-4 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
-      >
-        {submitting ? (
-          <span className="inline-flex items-center justify-center gap-2">
-            <Loader2 className="size-4 animate-spin" /> Checking location…
-          </span>
-        ) : (
-          `Submit report (+${POINTS_PER_REPORT} SETU Points)`
-        )}
-      </button>
-
-
-              <HonestyNote>
-        Reports are stored in this prototype's memory only. Trust scores come
-        from simulated verification, not live staff checkpoints. Location
-        proximity is a demo check — not a production anti-spoofing system.
-        {" "}{COACH_CLASS_DISCLAIMER}
-      </HonestyNote>
-    </div>
-  );
-}
+                    ?

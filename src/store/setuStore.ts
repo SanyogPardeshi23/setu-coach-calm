@@ -2,7 +2,6 @@
  * SETU — in-memory app store (frontend only).
  * A future backend service can replace the mutators with API calls.
  */
-
 import { useSyncExternalStore } from "react";
 import {
   CrowdLevel,
@@ -93,6 +92,8 @@ export const setuActions = {
     coachId: string;
     level: CrowdLevel;
     userId?: string;
+    locationVerified?: boolean;
+    queued?: boolean;
   }) {
     const userId = input.userId ?? CURRENT_USER_ID;
     const report: CrowdReport = {
@@ -103,6 +104,8 @@ export const setuActions = {
       timestamp: Date.now(),
       userId,
       userTrustScore: state.trustScores[userId] ?? DEFAULT_TRUST_SCORE,
+      locationVerified: input.locationVerified ?? true,
+      queued: input.queued ?? false,
     };
     setState({
       reports: [...state.reports, report],
@@ -112,6 +115,21 @@ export const setuActions = {
           : state.points,
     });
     return report;
+  },
+
+  /**
+   * Commits a report that was previously queued offline. Uses its ORIGINAL
+   * id/timestamp from offlineQueue.ts — never regenerates them — so a
+   * report filed 10 minutes ago still decays correctly once synced.
+   */
+  ingestQueuedReport(report: CrowdReport) {
+    setState({
+      reports: [...state.reports, { ...report, queued: false }],
+      points:
+        report.userId === CURRENT_USER_ID
+          ? state.points + POINTS_PER_REPORT
+          : state.points,
+    });
   },
 
   runVerification(userId: string, reported: CrowdLevel, actual: CrowdLevel) {

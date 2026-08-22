@@ -164,6 +164,20 @@ export function coachClassOf(coachId: string): CoachClass {
   return COACH_META[coachId]?.coachClass ?? "SECOND";
 }
 
+/**
+ * Fixed total-seat estimates per coach class, standard Mumbai suburban
+ * rake. Second Class: ~96-100 seats (3-per-bench, often 4 in rush hour).
+ * First Class: ~80-84 seats. Midpoints used as a single fixed figure.
+ */
+export const SEATS_PER_CLASS: Record<CoachClass, number> = {
+  FIRST: 82,
+  SECOND: 98,
+};
+
+export function totalSeatsOf(coachId: string): number {
+  return SEATS_PER_CLASS[coachClassOf(coachId)];
+}
+
 export function platformPositionOf(coachId: string): string {
   return COACH_META[coachId]?.platformPosition ?? "Position unknown";
 }

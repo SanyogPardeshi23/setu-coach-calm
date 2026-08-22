@@ -108,11 +108,15 @@ export function aggregateCoach(
   let lastReportAt = 0;
 
   for (const report of reports) {
-    const w = reportWeight(report, now);
-    totalWeight += w;
-    weightedSum += w * levelScore(report.level);
-    lastReportAt = Math.max(lastReportAt, report.timestamp);
+  const w = reportWeight(report, now);
+  const lvl = levelScore(report.level);
+  if (!Number.isFinite(w) || !Number.isFinite(lvl)) {
+    continue; // skip a malformed report instead of letting it poison the whole aggregate
   }
+  totalWeight += w;
+  weightedSum += w * lvl;
+  lastReportAt = Math.max(lastReportAt, report.timestamp);
+}
 
   const confidence =
     Math.min(1, totalWeight / numReports) * Math.min(1, numReports / 3);

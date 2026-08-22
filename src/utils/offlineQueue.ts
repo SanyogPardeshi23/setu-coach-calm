@@ -56,7 +56,14 @@ export function subscribeQueue(listener: Listener): () => void {
 }
 
 export function enqueueReport(report: QueuedReport): QueuedReport[] {
-  const queue = [...readQueue(), { ...report, queued: true }];
+  const safe: QueuedReport = {
+    ...report,
+    timestamp: Number.isFinite(report.timestamp) ? report.timestamp : Date.now(),
+    userTrustScore: Number.isFinite(report.userTrustScore)
+      ? report.userTrustScore
+      : 1,
+  };
+  const queue = [...readQueue(), { ...safe, queued: true }];
   writeQueue(queue);
   return queue;
 }

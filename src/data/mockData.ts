@@ -11,6 +11,9 @@ export interface Station {
   id: string;
   name: string;
   line: string;
+  /** Approximate coordinates — demo data for the proximity check only. */
+  lat: number;
+  lng: number;
 }
 
 export interface Train {
@@ -30,18 +33,30 @@ const LINE = "Central Line";
 
 /** Full Central Line list, in geographic order (CSMT → Kalyan). */
 export const STATIONS: Station[] = [
-  { id: "CSMT", name: "CSMT", line: LINE },
-  { id: "BY", name: "Byculla", line: LINE },
-  { id: "DR", name: "Dadar", line: LINE },
-  { id: "CLA", name: "Kurla", line: LINE },
-  { id: "VVH", name: "Vidyavihar", line: LINE },
-  { id: "GC", name: "Ghatkopar", line: LINE },
-  { id: "VK", name: "Vikhroli", line: LINE },
-  { id: "BND", name: "Bhandup", line: LINE },
-  { id: "MLND", name: "Mulund", line: LINE },
-  { id: "TNA", name: "Thane", line: LINE },
-  { id: "DI", name: "Dombivli", line: LINE },
-  { id: "KYN", name: "Kalyan", line: LINE },
+  { id: "CSMT", name: "CSMT", line: LINE, lat: 18.9401, lng: 72.8353 },
+  { id: "BY", name: "Byculla", line: LINE, lat: 18.9760, lng: 72.8329 },
+  { id: "CHG", name: "Chinchpokli", line: LINE, lat: 18.9843, lng: 72.8322 },
+  { id: "CRD", name: "Currey Road", line: LINE, lat: 18.9932, lng: 72.8340 },
+  { id: "PL", name: "Parel", line: LINE, lat: 19.0043, lng: 72.8375 },
+  { id: "DR", name: "Dadar", line: LINE, lat: 19.0186, lng: 72.8435 },
+  { id: "MTN", name: "Matunga", line: LINE, lat: 19.0270, lng: 72.8520 },
+  { id: "SIN", name: "Sion", line: LINE, lat: 19.0437, lng: 72.8615 },
+  { id: "CLA", name: "Kurla", line: LINE, lat: 19.0653, lng: 72.8792 },
+  { id: "VVH", name: "Vidyavihar", line: LINE, lat: 19.0800, lng: 72.8968 },
+  { id: "GC", name: "Ghatkopar", line: LINE, lat: 19.0860, lng: 72.9081 },
+  { id: "VK", name: "Vikhroli", line: LINE, lat: 19.1109, lng: 72.9285 },
+  { id: "KJMG", name: "Kanjurmarg", line: LINE, lat: 19.1300, lng: 72.9360 },
+  { id: "BND", name: "Bhandup", line: LINE, lat: 19.1440, lng: 72.9370 },
+  { id: "NHU", name: "Nahur", line: LINE, lat: 19.1560, lng: 72.9440 },
+  { id: "MLND", name: "Mulund", line: LINE, lat: 19.1723, lng: 72.9567 },
+  { id: "TNA", name: "Thane", line: LINE, lat: 19.1860, lng: 72.9754 },
+  { id: "KLVA", name: "Kalwa", line: LINE, lat: 19.1930, lng: 73.0000 },
+  { id: "MBQ", name: "Mumbra", line: LINE, lat: 19.1890, lng: 73.0230 },
+  { id: "DIVA", name: "Diva", line: LINE, lat: 19.1900, lng: 73.0400 },
+  { id: "KOPR", name: "Kopar", line: LINE, lat: 19.2050, lng: 73.0620 },
+  { id: "DI", name: "Dombivli", line: LINE, lat: 19.2158, lng: 73.0868 },
+  { id: "TLA", name: "Thakurli", line: LINE, lat: 19.2280, lng: 73.1000 },
+  { id: "KYN", name: "Kalyan", line: LINE, lat: 19.2437, lng: 73.1300 },
 ];
 
 /** Stations a Fast train actually halts at. */
@@ -67,6 +82,10 @@ export function stationIndex(id: string): number {
   return STATIONS.findIndex((s) => s.id === id);
 }
 
+export function stationById(id: string): Station | undefined {
+  return STATIONS.find((s) => s.id === id);
+}
+
 /** Stops for a train type, trimmed to the origin → destination segment. */
 function routeStops(
   type: "Fast" | "Slow",
@@ -79,7 +98,85 @@ function routeStops(
   return from <= to ? base.slice(from, to + 1) : base.slice(to, from + 1).reverse();
 }
 
-export const COACHES = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"];
+/** Standard 12-car suburban rake. */
+export const COACHES = [
+  "C1",
+  "C2",
+  "C3",
+  "C4",
+  "C5",
+  "C6",
+  "C7",
+  "C8",
+  "C9",
+  "C10",
+  "C11",
+  "C12",
+];
+
+export type CoachClass = "FIRST" | "SECOND";
+
+export interface CoachMeta {
+  coachId: string;
+  /** Position in the rake, 1 = engine end. */
+  position: number;
+  coachClass: CoachClass;
+  /** Illustrative platform indicator-pole reference. */
+  platformPosition: string;
+}
+
+/**
+ * DEMO model of a standard 12-car Mumbai suburban EMU:
+ * coach 1 and coach 12 are First Class, the rest Second Class.
+ * Real rakes vary — this is illustrative only.
+ */
+const POLE_LABELS: string[] = [
+  "Pole A1 — Front of platform (engine end)",
+  "Pole A2",
+  "Pole A3",
+  "Pole B1",
+  "Pole B2",
+  "Pole B3",
+  "Pole C1",
+  "Pole C2",
+  "Pole C3",
+  "Pole D1",
+  "Pole D2",
+  "Pole D3 — Rear of platform (guard end)",
+];
+
+export const COACH_META: Record<string, CoachMeta> = Object.fromEntries(
+  COACHES.map((coachId, i) => [
+    coachId,
+    {
+      coachId,
+      position: i + 1,
+      coachClass: (i === 0 || i === COACHES.length - 1
+        ? "FIRST"
+        : "SECOND") as CoachClass,
+      platformPosition: POLE_LABELS[i] ?? `Pole ${i + 1}`,
+    },
+  ]),
+);
+
+export function coachClassOf(coachId: string): CoachClass {
+  return COACH_META[coachId]?.coachClass ?? "SECOND";
+}
+
+export function platformPositionOf(coachId: string): string {
+  return COACH_META[coachId]?.platformPosition ?? "Position unknown";
+}
+
+export const COACH_CLASS_LABELS: Record<CoachClass, string> = {
+  FIRST: "1st Class",
+  SECOND: "2nd Class",
+};
+
+export const COACH_CLASS_DISCLAIMER =
+  "Demo model — real coach class positions vary by rake.";
+
+export const POLE_DISCLAIMER =
+  "Pole positions are illustrative — actual platform markings vary by station and rake length.";
 
 export const TRAINS: Train[] = [
   {
@@ -191,6 +288,7 @@ function makeReport(
     timestamp: now - secondsAgo * 1000,
     userId,
     userTrustScore: trust,
+    locationVerified: true,
   };
 }
 
@@ -201,9 +299,8 @@ function makeReport(
 export function seedReports(now: number = Date.now()): CrowdReport[] {
   const plan: Array<[string, CrowdLevel, number, string]> = [
     // coach, level, secondsAgo, userId
-    ["C1", CrowdLevel.PACKED, 25, "u-1042"],
-    ["C1", CrowdLevel.PACKED, 70, "u-2087"],
-    ["C1", CrowdLevel.CROWDED, 140, "u-3311"],
+    ["C1", CrowdLevel.CROWDED, 25, "u-1042"], // First Class
+    ["C1", CrowdLevel.COMFORTABLE, 70, "u-2087"],
     ["C2", CrowdLevel.PACKED, 40, "u-5123"],
     ["C2", CrowdLevel.CROWDED, 95, "u-4590"],
     ["C3", CrowdLevel.CROWDED, 30, "u-1042"],
@@ -216,7 +313,12 @@ export function seedReports(now: number = Date.now()): CrowdReport[] {
     ["C5", CrowdLevel.EMPTY, 90, "u-5123"],
     ["C6", CrowdLevel.CROWDED, 1500, "u-2087"], // fully decayed -> No Recent Data
     ["C7", CrowdLevel.PACKED, 35, "u-4590"],
-    // C8 intentionally left with zero reports -> "No Data"
+    ["C8", CrowdLevel.CROWDED, 60, "u-3311"],
+    ["C9", CrowdLevel.PACKED, 50, "u-1042"],
+    ["C10", CrowdLevel.CROWDED, 75, "u-5123"],
+    ["C12", CrowdLevel.EMPTY, 40, "u-4590"], // First Class, roomy
+    ["C12", CrowdLevel.COMFORTABLE, 105, "u-3311"],
+    // C11 intentionally left with zero reports -> "No Data"
   ];
 
   const trustOf = (id: string) =>
@@ -231,8 +333,10 @@ export function seedReports(now: number = Date.now()): CrowdReport[] {
     makeReport("90518", "C2", CrowdLevel.COMFORTABLE, 60, "u-1042", 1.22, now),
     makeReport("90518", "C3", CrowdLevel.COMFORTABLE, 25, "u-3311", 1.05, now),
     makeReport("90518", "C5", CrowdLevel.CROWDED, 80, "u-5123", 1.34, now),
+    makeReport("90518", "C12", CrowdLevel.EMPTY, 45, "u-4590", 0.93, now),
     makeReport("90524", "C1", CrowdLevel.EMPTY, 50, "u-4590", 0.93, now),
     makeReport("90524", "C4", CrowdLevel.COMFORTABLE, 35, "u-2087", 0.78, now),
+    makeReport("90524", "C9", CrowdLevel.CROWDED, 70, "u-5123", 1.34, now),
   ];
 
   return [...reports, ...others];

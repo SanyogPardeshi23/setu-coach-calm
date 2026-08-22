@@ -6,7 +6,7 @@ import {
 } from "@/engine/decayWeightedEngine";
 import { colorForScore } from "@/lib/crowdUi";
 import { CrowdBadge } from "@/components/CrowdBadge";
-import { coachClassOf, platformPositionOf } from "@/data/mockData";
+import { coachClassOf, platformPositionOf, totalSeatsOf } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 
 export function CoachCard({
@@ -25,10 +25,15 @@ export function CoachCard({
   const color = colorForScore(aggregate.occupancyScore);
   const isFirst = coachClassOf(aggregate.coachId) === "FIRST";
   const pole = platformPositionOf(aggregate.coachId);
+  const totalSeats = totalSeatsOf(aggregate.coachId);
   const pct =
     aggregate.occupancyScore === null
       ? 0
       : Math.round(aggregate.occupancyScore * 100);
+  const availableSeats =
+    aggregate.status === "SCORED" && aggregate.occupancyScore !== null
+      ? Math.max(0, Math.round(totalSeats * (1 - aggregate.occupancyScore)))
+      : null;
 
   return (
     <button
@@ -94,13 +99,20 @@ export function CoachCard({
             />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>
+              {availableSeats !== null
+                ? `~${availableSeats} seat${availableSeats === 1 ? "" : "s"} available (of ${totalSeats})`
+                : ""}
+            </span>
             <span>Confidence {Math.round(aggregate.confidence * 100)}%</span>
-            {aggregate.lowConfidence && (
-              <span className="rounded-full bg-secondary px-2 py-0.5 font-medium">
+          </div>
+          {aggregate.lowConfidence && (
+            <div className="mt-1 flex justify-end">
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 low confidence
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-secondary/70 px-3 py-3 text-xs text-muted-foreground">

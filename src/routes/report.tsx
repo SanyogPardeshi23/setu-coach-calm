@@ -8,10 +8,21 @@ import {
   CrowdLevel,
 } from "@/engine/decayWeightedEngine";
 import { crowdColorVar } from "@/lib/crowdUi";
-import { TRAINS, CURRENT_USER_ID, coachClassOf, stationById, COACH_CLASS_DISCLAIMER } from "@/data/mockData";import { setuActions, useSetuStore, POINTS_PER_REPORT } from "@/store/setuStore";
+import {
+  TRAINS,
+  CURRENT_USER_ID,
+  coachClassOf,
+  nearestStation,
+  COACH_CLASS_DISCLAIMER,
+} from "@/data/mockData";
+import { setuActions, useSetuStore, POINTS_PER_REPORT } from "@/store/setuStore";
 import { HonestyNote } from "@/components/HonestyNote";
 import { trustTier } from "@/engine/trustEngine";
-import { checkStationProximity } from "@/utils/geofence";
+import {
+  getCurrentPosition,
+  GEOFENCE_RADIUS_METERS,
+  formatDistance,
+} from "@/utils/geofence";
 import { enqueueReport, isOnline } from "@/utils/offlineQueue";
 
 export const Route = createFileRoute("/report")({
@@ -42,8 +53,7 @@ const LEVELS = [
 ];
 
 function ReportCrowd() {
-  const { selectedTrainId, selectedCoachId, selectedStationId, trustScores } =
-    useSetuStore();
+  const { selectedTrainId, selectedCoachId, trustScores } = useSetuStore();
   const navigate = useNavigate();
   const [level, setLevel] = useState<CrowdLevel | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -84,7 +94,6 @@ function ReportCrowd() {
 
     setLevel(null);
     setGeoWarning(null);
-    setSubmitting(false);
     navigate({ to: "/train" });
   }
 
@@ -92,34 +101,36 @@ function ReportCrowd() {
     if (level === null) return;
     setSubmitting(true);
 
-    if (forceOverride || !station) {
-      finalize(false);
-      return;
-    }
+    try {
+      if (forceOverride) {
+        finalize(false);
+        return;
+      }
 
-    const pos = await getCurrentPosition();
-    const { station: nearest, distanceMeters } = nearestStation(
-    pos.coords.latitude,
-    pos.coords.longitude,
-    );
-    const result = await checkStationProximity(
-    { lat: nearest.lat, lng: nearest.lng },
-    );
+      let locationVerified = false;
+      try {
+        const pos = await getCurrentPosition();
+        const { station: nearest, distanceMeters } = nearestStation(
+          pos.coords.latitude,
+          pos.coords.longitude,
+        );
+        locationVerified = distanceMeters <= GEOFENCE_RADIUS_METERS;
 
-    if (result.locationVerified) {
-      finalize(true);
-      return;
-    }
+        if (!locationVerified) {
+          setGeoWarning(
+            `You don't appear to be near a station (nearest is ${nearest.name}, about ${formatDistance(distanceMeters)} away) — report anyway?`,
+          );
+          return; // pause here — wait for the explicit override button
+        }
+      } catch {
+        // Permission denied / unavailable / timed out — soft-fail straight through.
+        locationVerified = false;
+      }
 
-    if (result.status === "OUTSIDE") {
-      // Genuine mismatch — pause for an explicit override, don't hard-block.
+      finalize(locationVerified);
+    } finally {
       setSubmitting(false);
-      setGeoWarning(result.message);
-      return;
     }
-
-    // PERMISSION_DENIED / UNAVAILABLE / UNSUPPORTED — soft-fail straight through.
-    finalize(false);
   }
 
   return (
@@ -274,7 +285,5 @@ function ReportCrowd() {
         Reports are stored in this prototype's memory only. Trust scores come
         from simulated verification, not live staff checkpoints. Location
         proximity is a demo check — not a production anti-spoofing system.
+        {" "}{COACH_CLASS_DISCLAIMER}
       </HonestyNote>
-    </div>
-  );
-}

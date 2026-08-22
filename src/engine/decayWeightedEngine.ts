@@ -46,6 +46,10 @@ export interface CrowdReport {
   timestamp: number;
   userId: string;
   userTrustScore: number;
+  /** Demo proximity check result (see src/utils/geofence.ts). */
+  locationVerified?: boolean;
+  /** True while the report is sitting in the offline queue. */
+  queued?: boolean;
 }
 
 /** 180-second half-life: a report is worth half as much after 3 minutes. */

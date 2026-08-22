@@ -119,12 +119,6 @@ export const setuActions = {
     return report;
   },
 
-  /**
-   * Commits a report that was previously queued offline. Uses its ORIGINAL
-   * id/timestamp/distanceMeters from offlineQueue.ts — never regenerates
-   * them — so a report filed 10 minutes ago still decays correctly, and
-   * its original location-confidence weight is preserved, once synced.
-   */
   ingestQueuedReport(report: CrowdReport) {
     setState({
       reports: [...state.reports, { ...report, queued: false }],
@@ -140,4 +134,27 @@ export const setuActions = {
     const event = applyVerification(current, userId, reported, actual);
     setState({
       trustScores: { ...state.trustScores, [userId]: event.newScore },
-      verifications: [event, ...state.verifications].slice(0,
+      verifications: [event, ...state.verifications].slice(0, 40),
+    });
+    return event;
+  },
+
+  setSimulationRunning(running: boolean) {
+    setState({ simulationRunning: running });
+  },
+
+  bumpTick() {
+    setState({ tick: state.tick + 1 });
+  },
+
+  resetDemo() {
+    setState({
+      reports: seedReports(Date.now()),
+      trustScores: { ...initialTrust },
+      verifications: [],
+      points: 0,
+      simulationRunning: false,
+      tick: state.tick + 1,
+    });
+  },
+};

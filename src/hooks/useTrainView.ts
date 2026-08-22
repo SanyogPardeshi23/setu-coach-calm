@@ -4,7 +4,7 @@ import {
   trainAverageOccupancy,
 } from "@/engine/decayWeightedEngine";
 import { recommend } from "@/engine/recommendationEngine";
-import { TRAINS, UPCOMING_TRAINS } from "@/data/mockData";
+import { TRAINS, UPCOMING_TRAINS, coachClassOf } from "@/data/mockData";
 import { useSetuStore } from "@/store/setuStore";
 import { useLiveClock } from "@/hooks/useLiveClock";
 
@@ -26,17 +26,21 @@ export function useTrainView() {
   );
 
   const recommendation = useMemo(
-    () => recommend(aggregates, upcoming, selectedCoachId),
+    () => recommend(aggregates, upcoming, selectedCoachId, coachClassOf),
     [aggregates, upcoming, selectedCoachId],
   );
 
+  const selectedClass = coachClassOf(selectedCoachId);
+
   const bestCoachId = useMemo(() => {
-    const scored = aggregates.filter((a) => a.status === "SCORED");
+    const scored = aggregates.filter(
+      (a) => a.status === "SCORED" && coachClassOf(a.coachId) === selectedClass,
+    );
     if (scored.length === 0) return null;
     return [...scored].sort(
       (a, b) => (a.occupancyScore as number) - (b.occupancyScore as number),
     )[0]!.coachId;
-  }, [aggregates]);
+  }, [aggregates, selectedClass]);
 
   return {
     now,
@@ -47,5 +51,6 @@ export function useTrainView() {
     recommendation,
     bestCoachId,
     selectedCoachId,
+    selectedClass,
   };
 }

@@ -2,6 +2,7 @@
  * SETU — in-memory app store (frontend only).
  * A future backend service can replace the mutators with API calls.
  */
+import { persistReportToDb } from "@/lib/supabase";
 import { useSyncExternalStore } from "react";
 import {
   CrowdLevel,

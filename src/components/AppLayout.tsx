@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
-import { setuActions } from "@/store/setuStore";
+import { setuActions, startRemoteSync } from "@/store/setuStore";
 import { setQueueFlusher, initOfflineSync } from "@/utils/offlineQueue";
 
 const NAV = [
@@ -21,18 +21,24 @@ const NAV = [
 
 export function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
-  setQueueFlusher((reports) => {
-  reports.forEach((r) => setuActions.ingestQueuedReport(r));
-});
-
-  const cleanup = initOfflineSync((count) => {
-    toast.success(`${count} report${count === 1 ? "" : "s"} synced`, {
-      description: "Your queued crowd reports are now live.",
+    setQueueFlusher((reports) => {
+      reports.forEach((r) => setuActions.ingestQueuedReport(r));
     });
-  });
 
-  return cleanup;
-}, []);
+    const cleanupOffline = initOfflineSync((count) => {
+      toast.success(`${count} report${count === 1 ? "" : "s"} synced`, {
+        description: "Your queued crowd reports are now live.",
+      });
+    });
+
+    const cleanupRemote = startRemoteSync(5000);
+
+    return () => {
+      cleanupOffline();
+      cleanupRemote();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">

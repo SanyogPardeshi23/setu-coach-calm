@@ -117,6 +117,7 @@ export const setuActions = {
           ? state.points + POINTS_PER_REPORT
           : state.points,
     });
+    persistReportToDb(report); // fire-and-forget, doesn't block or await
     return report;
   },
 
@@ -137,6 +138,7 @@ export const setuActions = {
       trustScores: { ...state.trustScores, [userId]: event.newScore },
       verifications: [event, ...state.verifications].slice(0, 40),
     });
+    persistReportToDb(report); // fire-and-forget, doesn't block or await
     return event;
   },
 

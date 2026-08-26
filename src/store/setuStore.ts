@@ -1,8 +1,7 @@
 /**
- * SETU — in-memory app store (frontend only).
- * A future backend service can replace the mutators with API calls.
+ * SETU — in-memory app store (frontend only), backed by a shared
+ * Supabase table for cross-device/cross-user reports.
  */
-import { persistReportToDb } from "@/lib/supabase";
 import { useSyncExternalStore } from "react";
 import {
   CrowdLevel,
@@ -20,6 +19,7 @@ import {
   TRAINS,
   STATIONS,
 } from "@/data/mockData";
+import { persistReportToDb, fetchReportsFromDb } from "@/lib/supabase";
 
 export const POINTS_PER_REPORT = 10;
 
@@ -71,6 +71,20 @@ export function useSetuStore(): SetuState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/**
+ * Merges remote reports into the local list by id. Seeded demo reports
+ * use "seed-..." ids and real reports use "rep-..." ids, so they never
+ * collide — this only ever adds/refreshes real shared data.
+ */
+function mergeReports(
+  local: CrowdReport[],
+  remote: CrowdReport[],
+): CrowdReport[] {
+  const byId = new Map(local.map((r) => [r.id, r]));
+  remote.forEach((r) => byId.set(r.id, r));
+  return Array.from(byId.values());
+}
+
 export const setuActions = {
   getState: () => state,
 
@@ -117,16 +131,10 @@ export const setuActions = {
           ? state.points + POINTS_PER_REPORT
           : state.points,
     });
-    persistReportToDb(report); // fire-and-forget, doesn't block or await
+    persistReportToDb(report);
     return report;
   },
 
-  /**
-   * Commits a report that was previously queued offline. Uses its ORIGINAL
-   * id/timestamp/distanceMeters from offlineQueue.ts — never regenerates
-   * them — so a report filed 10 minutes ago still decays correctly, and
-   * its original location-confidence weight is preserved, once synced.
-   */
   ingestQueuedReport(report: CrowdReport) {
     setState({
       reports: [...state.reports, { ...report, queued: false }],
@@ -135,7 +143,7 @@ export const setuActions = {
           ? state.points + POINTS_PER_REPORT
           : state.points,
     });
-    persistReportToDb(report); // fire-and-forget, doesn't block or await
+    persistReportToDb(report);
   },
 
   runVerification(userId: string, reported: CrowdLevel, actual: CrowdLevel) {
@@ -167,3 +175,28 @@ export const setuActions = {
     });
   },
 };
+
+/**
+ * Polls the shared Supabase table every `intervalMs` and merges in any
+ * reports other users/devices have submitted for the currently selected
+ * train. Call once at app startup; returns a cleanup function.
+ */
+export function startRemoteSync(intervalMs = 5000): () => void {
+  let stopped = false;
+
+  async function tick() {
+    if (stopped) return;
+    const remote = await fetchReportsFromDb(state.selectedTrainId);
+    if (remote.length > 0) {
+      setState({ reports: mergeReports(state.reports, remote) });
+    }
+  }
+
+  tick();
+  const id = setInterval(tick, intervalMs);
+
+  return () => {
+    stopped = true;
+    clearInterval(id);
+  };
+}

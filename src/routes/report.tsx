@@ -111,15 +111,40 @@ function ReportCrowd() {
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Simulate instant AI analysis on the captured frame for the demo
+    // Simple pixel variation analysis to make the demo reactive to the environment
+    const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let totalBrightness = 0;
+    const data = frameData.data;
+    
+    // Sample every 200th pixel for performance
+    let samples = 0;
+    for (let i = 0; i < data.length; i += 200) {
+      totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
+      samples++;
+    }
+    const avgBrightness = totalBrightness / (samples || 1);
+
+    // Simulate intelligent dynamic level assignment based on lighting/framing or randomness
     setTimeout(() => {
-      const simulatedLevel = CrowdLevel.CROWDED;
+      let simulatedLevel: CrowdLevel;
+      let recommendationText: string;
+
+      const randomFactor = Math.random();
+      if (avgBrightness < 60 || randomFactor < 0.35) {
+        simulatedLevel = CrowdLevel.COMFORTABLE;
+        recommendationText = "Low density detected. Ample standing space and empty seats available nearby.";
+      } else if (randomFactor < 0.75) {
+        simulatedLevel = CrowdLevel.CROWDED;
+        recommendationText = "Moderate crowd density observed in aisle. Standing room only.";
+      } else {
+        simulatedLevel = CrowdLevel.PACKED;
+        recommendationText = "High surge density detected! Recommendation: Move towards adjacent coach for space.";
+      }
+
       setLevel(simulatedLevel);
-      
-      const recommendationText = "High density detected via camera scan. Recommendation: Consider moving towards Coach C-4 for lower crowd levels.";
       setAiRecommendation(recommendationText);
-      
       setScanning(false);
+      
       toast.success("AI Camera Surge Scan Complete!", {
         description: recommendationText,
       });
@@ -274,7 +299,7 @@ function ReportCrowd() {
         </div>
       </section>
 
-      {/* NEW: MOBILE CAMERA SURGE DETECTION SCANNER SECTION */}
+      {/* MOBILE CAMERA SURGE DETECTION SCANNER SECTION */}
       <section className="card-surface p-4 space-y-3 border-primary/40 bg-primary/5">
         <div className="flex items-center gap-2">
           <Camera className="size-5 text-primary" />

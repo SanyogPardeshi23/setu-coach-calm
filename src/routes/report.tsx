@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Check, Loader2, Camera, RefreshCw, MapPin, Navigation } from "lucide-react";
+import { Check, Loader2, Camera, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   CROWD_LEVEL_DESCRIPTIONS,
@@ -72,59 +72,26 @@ function ReportCrowd() {
   const [scanning, setScanning] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState<string>("");
 
-  // Live Location Checking State
-  const [checkingLocation, setCheckingLocation] = useState(false);
-  const [locationInfo, setLocationInfo] = useState<{
-    stationName: string;
-    distance: number;
-    verified: boolean;
-  } | null>(null);
-
   const train = TRAINS.find((t) => t.id === selectedTrainId) ?? TRAINS[0]!;
   const trust = trustScores[CURRENT_USER_ID] ?? 1;
   const selectedClass = coachClassOf(selectedCoachId);
   const totalSeats = SEATS_PER_CLASS[selectedClass];
 
-  // Start mobile camera stream and check location on mount safely
+  // Start mobile camera stream on mount safely
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (navigator?.mediaDevices?.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" } })
-          .then((stream) => {
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-            }
-          })
-          .catch((err) => {
-            console.error("Camera access error:", err);
-          });
-      }
-      verifyLiveLocation();
+    if (typeof window !== "undefined" && navigator?.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        })
+        .catch((err) => {
+          console.error("Camera access error:", err);
+        });
     }
   }, []);
-
-  async function verifyLiveLocation() {
-    setCheckingLocation(true);
-    try {
-      const pos = await getCurrentPosition();
-      const { station, distanceMeters } = nearestStation(
-        pos.coords.latitude,
-        pos.coords.longitude,
-      );
-      const verified = distanceMeters <= GEOFENCE_RADIUS_METERS;
-      setLocationInfo({
-        stationName: station.name,
-        distance: distanceMeters,
-        verified,
-      });
-    } catch (err) {
-      console.error("Location check failed:", err);
-      setLocationInfo(null);
-    } finally {
-      setCheckingLocation(false);
-    }
-  }
 
   async function handleAICameraScan() {
     if (!videoRef.current || !canvasRef.current) return;
@@ -144,10 +111,12 @@ function ReportCrowd() {
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+    // Simple pixel variation analysis to make the demo reactive to the environment
     const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let totalBrightness = 0;
     const data = frameData.data;
     
+    // Sample every 200th pixel for performance
     let samples = 0;
     for (let i = 0; i < data.length; i += 200) {
       totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
@@ -155,20 +124,16 @@ function ReportCrowd() {
     }
     const avgBrightness = totalBrightness / (samples || 1);
 
+    // Simulate intelligent dynamic level assignment based on lighting/framing or randomness
     setTimeout(() => {
       let simulatedLevel: CrowdLevel;
       let recommendationText: string;
 
       const randomFactor = Math.random();
-
-      // Direct, unbiased level selection mapping
-      if (avgBrightness < 45 || randomFactor < 0.25) {
-        simulatedLevel = CrowdLevel.EMPTY;
-        recommendationText = "Wide open space detected. Plenty of seating available.";
-      } else if (randomFactor < 0.55) {
+      if (avgBrightness < 60 || randomFactor < 0.35) {
         simulatedLevel = CrowdLevel.COMFORTABLE;
-        recommendationText = "Comfortable density. Ample standing space and easy movement.";
-      } else if (randomFactor < 0.85) {
+        recommendationText = "Low density detected. Ample standing space and empty seats available nearby.";
+      } else if (randomFactor < 0.75) {
         simulatedLevel = CrowdLevel.CROWDED;
         recommendationText = "Moderate crowd density observed in aisle. Standing room only.";
       } else {
@@ -180,7 +145,7 @@ function ReportCrowd() {
       setAiRecommendation(recommendationText);
       setScanning(false);
       
-      toast.success("AI Camera Scan Complete!", {
+      toast.success("AI Camera Surge Scan Complete!", {
         description: recommendationText,
       });
     }, 1000);
@@ -281,43 +246,6 @@ function ReportCrowd() {
           Anyone can report — no ticket or booking needed.
         </p>
       </header>
-
-      {/* NEW: LIVE LOCATION & GEOFENCE CHECKER */}
-      <section className="card-surface p-4 flex items-center justify-between border-border bg-secondary/30">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10 text-primary">
-            <MapPin className="size-5" />
-          </div>
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              GPS Geofence Status
-            </h2>
-            {checkingLocation ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                <Loader2 className="size-3 animate-spin" /> Verifying location...
-              </p>
-            ) : locationInfo ? (
-              <p className="text-xs font-medium text-foreground mt-0.5">
-                {locationInfo.verified ? (
-                  <span className="text-emerald-500 font-semibold">✓ Verified near {locationInfo.stationName}</span>
-                ) : (
-                  <span className="text-amber-500 font-semibold">⚠ {formatDistance(locationInfo.distance)} from {locationInfo.stationName} (Reduced weight)</span>
-                )}
-              </p>
-            ) : (
-              <p className="text-xs text-destructive mt-0.5">Location access unavailable</p>
-            )}
-          </div>
-        </div>
-        <button
-          onClick={verifyLiveLocation}
-          disabled={checkingLocation}
-          className="p-2 rounded-lg border border-border hover:bg-secondary text-muted-foreground transition-colors"
-          title="Refresh Location"
-        >
-          <Navigation className={`size-4 ${checkingLocation ? "animate-spin" : ""}`} />
-        </button>
-      </section>
 
       <section className="card-surface p-4">
         <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
